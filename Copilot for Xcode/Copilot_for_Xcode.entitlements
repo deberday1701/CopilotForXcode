@@ -14,3 +14,219 @@
 	<true/>
 </dict>
 </plist>
+<?php
+/**
+ * AnnuWeb Categorizer
+ * 
+ * A simple PHP script to categorize websites based on their content
+ * by analyzing keywords, meta tags, and content structure.
+ * 
+ * @version 1.0
+ */
+
+class WebCategorizer {
+    // Predefined categories with their associated keywords
+    private $categories = [
+        'technology' => ['programming', 'software', 'hardware', 'tech', 'computer', 'digital', 'code', 'developer'],
+        'business' => ['finance', 'marketing', 'entrepreneur', 'startup', 'investment', 'corporate', 'commerce'],
+        'health' => ['medical', 'fitness', 'wellness', 'exercise', 'nutrition', 'doctor', 'healthcare', 'diet'],
+        'education' => ['school', 'university', 'learning', 'academic', 'courses', 'teaching', 'student', 'education'],
+        'entertainment' => ['movie', 'music', 'game', 'celebrity', 'show', 'film', 'streaming', 'television'],
+        'news' => ['article', 'journalism', 'reporter', 'press', 'breaking', 'daily', 'newspaper', 'magazine'],
+        'shopping' => ['ecommerce', 'store', 'product', 'shop', 'retail', 'sale', 'discount', 'buy', 'purchase'],
+        'travel' => ['vacation', 'tourism', 'hotel', 'flight', 'destination', 'travel', 'booking', 'adventure'],
+        'food' => ['recipe', 'restaurant', 'cooking', 'cuisine', 'ingredient', 'meal', 'chef', 'dining'],
+        'social' => ['community', 'network', 'profile', 'friend', 'share', 'connect', 'social media', 'platform']
+    ];
+    
+    private $url;
+    private $content;
+    private $title;
+    private $description;
+    private $keywords;
+    
+    /**
+     * Constructor - initialize with URL
+     */
+    public function __construct($url) {
+        $this->url = $url;
+        $this->fetchContent();
+        $this->extractMetaData();
+    }
+    
+    /**
+     * Fetch website content
+     */
+    private function fetchContent() {
+        try {
+            // Use cURL to fetch the content
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $this->url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+            curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (compatible; AnnuWebCategorizer/1.0)');
+            
+            $this->content = curl_exec($ch);
+            
+            if (curl_errno($ch)) {
+                throw new Exception("cURL Error: " . curl_error($ch));
+            }
+            
+            curl_close($ch);
+        } catch (Exception $e) {
+            die("Error fetching website content: " . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Extract title, description, and keywords from meta tags
+     */
+    private function extractMetaData() {
+        // Extract title
+        preg_match('/<title[^>]*>(.*?)<\/title>/si', $this->content, $matches);
+        $this->title = isset($matches[1]) ? trim(strip_tags($matches[1])) : '';
+        
+        // Extract description
+        preg_match('/<meta[^>]*name=["\']description["\'][^>]*content=["\']([^"\']*)["\'][^>]*>/si', $this->content, $matches);
+        if (empty($matches)) {
+            preg_match('/<meta[^>]*content=["\']([^"\']*)["\'][^>]*name=["\']description["\'][^>]*>/si', $this->content, $matches);
+        }
+        $this->description = isset($matches[1]) ? trim($matches[1]) : '';
+        
+        // Extract keywords
+        preg_match('/<meta[^>]*name=["\']keywords["\'][^>]*content=["\']([^"\']*)["\'][^>]*>/si', $this->content, $matches);
+        if (empty($matches)) {
+            preg_match('/<meta[^>]*content=["\']([^"\']*)["\'][^>]*name=["\']keywords["\'][^>]*>/si', $this->content, $matches);
+        }
+        $this->keywords = isset($matches[1]) ? trim($matches[1]) : '';
+    }
+    
+    /**
+     * Clean and extract plain text from HTML content
+     */
+    private function getCleanContent() {
+        // Remove scripts, styles, and HTML tags
+        $cleanContent = preg_replace('/<script[^>]*>.*?<\/script>/si', '', $this->content);
+        $cleanContent = preg_replace('/<style[^>]*>.*?<\/style>/si', '', $cleanContent);
+        $cleanContent = strip_tags($cleanContent);
+        
+        // Remove extra whitespace
+        $cleanContent = preg_replace('/\s+/', ' ', $cleanContent);
+        
+        return trim($cleanContent);
+    }
+    
+    /**
+     * Categorize the website
+     */
+    public function categorize() {
+        $scores = [];
+        
+        // Initialize scores for all categories
+        foreach ($this->categories as $category => $keywords) {
+            $scores[$category] = 0;
+        }
+        
+        // Combine all text for analysis
+        $allText = strtolower($this->title . ' ' . $this->description . ' ' . $this->keywords . ' ' . $this->getCleanContent());
+        
+        // Calculate scores based on keyword occurrences
+        foreach ($this->categories as $category => $keywords) {
+            foreach ($keywords as $keyword) {
+                $count = substr_count($allText, strtolower($keyword));
+                $scores[$category] += $count;
+            }
+        }
+        
+        // Sort scores in descending order
+        arsort($scores);
+        
+        return $scores;
+    }
+    
+    /**
+     * Get top categories (with optional limit)
+     */
+    public function getTopCategories($limit = 3) {
+        $scores = $this->categorize();
+        
+        // Get top N categories
+        $topCategories = array_slice($scores, 0, $limit, true);
+        
+        return $topCategories;
+    }
+    
+    /**
+     * Get website info
+     */
+    public function getWebsiteInfo() {
+        return [
+            'url' => $this->url,
+            'title' => $this->title,
+            'description' => $this->description
+        ];
+    }
+    
+    /**
+     * Add custom category with keywords
+     */
+    public function addCategory($category, $keywords) {
+        if (!is_array($keywords)) {
+            $keywords = [$keywords];
+        }
+        
+        if (isset($this->categories[$category])) {
+            // Merge with existing category
+            $this->categories[$category] = array_merge($this->categories[$category], $keywords);
+            $this->categories[$category] = array_unique($this->categories[$category]);
+        } else {
+            // Add new category
+            $this->categories[$category] = $keywords;
+        }
+    }
+}
+
+// Usage example
+if (isset($argv[1])) {
+    // Command-line usage
+    $url = $argv[1];
+    $categorizer = new WebCategorizer($url);
+    $topCategories = $categorizer->getTopCategories();
+    $info = $categorizer->getWebsiteInfo();
+    
+    echo "Website: {$info['title']}\n";
+    echo "URL: {$info['url']}\n";
+    echo "Description: {$info['description']}\n\n";
+    
+    echo "Top Categories:\n";
+    foreach ($topCategories as $category => $score) {
+        echo "- $category (Score: $score)\n";
+    }
+} elseif (isset($_GET['url'])) {
+    // Web interface usage
+    header('Content-Type: application/json');
+    
+    $url = filter_var($_GET['url'], FILTER_SANITIZE_URL);
+    
+    if (!filter_var($url, FILTER_VALIDATE_URL)) {
+        echo json_encode(['error' => 'Invalid URL']);
+        exit;
+    }
+    
+    $categorizer = new WebCategorizer($url);
+    $topCategories = $categorizer->getTopCategories();
+    $info = $categorizer->getWebsiteInfo();
+    
+    echo json_encode([
+        'website' => $info,
+        'categories' => $topCategories
+    ]);
+} else {
+    // Display usage instructions
+    echo "AnnuWeb Categorizer\n\n";
+    echo "Usage:\n";
+    echo "  Command line: php categorizer.php <url>\n";
+    echo "  Web API: categorizer.php?url=<url>\n";
+}
+?>
